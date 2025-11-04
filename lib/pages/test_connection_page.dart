@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/google_apps_script_service.dart';
+import '../services/google_sheets_service.dart';
 
 class TestConnectionPage extends StatefulWidget {
   const TestConnectionPage({super.key});
@@ -20,7 +20,7 @@ class _TestConnectionPageState extends State<TestConnectionPage> {
 
     try {
       // Test fetching employee data
-      final employees = await GoogleAppsScriptService.getEmployeeData();
+      final employees = await GoogleSheetsService.getEmployeeData();
 
       setState(() {
         _result = 'Success! Found ${employees.length} employees:\n\n';
@@ -48,7 +48,7 @@ class _TestConnectionPageState extends State<TestConnectionPage> {
 
     try {
       // Test login with known credentials
-      final employee = await GoogleAppsScriptService.authenticateEmployee(
+      final employee = await GoogleSheetsService.authenticateEmployee(
         '1995',
         '123',
       );

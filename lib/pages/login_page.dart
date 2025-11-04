@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/google_apps_script_service.dart';
+import '../services/google_sheets_service.dart';
 import 'home_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -33,7 +33,7 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final employee = await GoogleAppsScriptService.authenticateEmployee(
+      final employee = await GoogleSheetsService.authenticateEmployee(
         _employeeIdController.text.trim(),
         _passwordController.text.trim(),
       );

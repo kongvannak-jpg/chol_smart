@@ -1,7 +1,12 @@
-// Google Apps Script code to deploy in your Google Sheet
-// Go to Extensions > Apps Script in your Google Sheet and paste this code
+// Google Apps Script code with CORS support for web applications
+// Go to Extensions > Apps Script in your Google Sheet and replace ALL existing code with this
 
 function doGet(e) {
+    // Handle CORS preflight requests
+    if (e.parameter.callback) {
+        return handleJSONP(e);
+    }
+    
     try {
         const sheet = SpreadsheetApp.getActiveSheet();
         const data = sheet.getDataRange().getValues();
@@ -74,4 +79,44 @@ function createCORSResponse(data) {
         .setMimeType(ContentService.MimeType.JSON);
     
     return output;
+}
+
+// Handle JSONP requests for better browser compatibility
+function handleJSONP(e) {
+    const callback = e.parameter.callback;
+    
+    try {
+        const sheet = SpreadsheetApp.getActiveSheet();
+        const data = sheet.getDataRange().getValues();
+
+        if (data.length === 0) {
+            return ContentService
+                .createTextOutput(`${callback}(${JSON.stringify({ success: false, message: 'No data found' })})`)
+                .setMimeType(ContentService.MimeType.JAVASCRIPT);
+        }
+
+        const headers = data[0];
+        const employees = [];
+
+        // Convert rows to objects
+        for (let i = 1; i < data.length; i++) {
+            const row = data[i];
+            const employee = {};
+
+            headers.forEach((header, index) => {
+                employee[header] = row[index];
+            });
+
+            employees.push(employee);
+        }
+
+        return ContentService
+            .createTextOutput(`${callback}(${JSON.stringify({ success: true, data: employees })})`)
+            .setMimeType(ContentService.MimeType.JAVASCRIPT);
+
+    } catch (error) {
+        return ContentService
+            .createTextOutput(`${callback}(${JSON.stringify({ success: false, message: error.toString() })})`)
+            .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
 }
