@@ -1,156 +1,328 @@
 import 'package:flutter/material.dart';
+import '../services/attendance_service.dart';
+import '../services/local_storage_service.dart';
+import '../services/network_security_service.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   final Map<String, dynamic> employee;
-
   const HomePage({super.key, required this.employee});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startNetworkMonitoring();
+  }
+
+  void _startNetworkMonitoring() {
+    // Check network every 5 minutes
+    Stream.periodic(const Duration(minutes: 5)).listen((_) async {
+      if (mounted) {
+        final networkResult =
+            await NetworkSecurityService.checkNetworkSecurity();
+
+        if (!networkResult.isAllowed) {
+          // Network access lost, redirect to network guard
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/network-guard',
+            (Route<dynamic> route) => false,
+          );
+        }
+      }
+    });
+  }
+
+  String _getInitials(String name) {
+    List<String> nameParts = name.split(' ');
+    if (nameParts.length >= 2) {
+      return '${nameParts[0][0]}${nameParts[1][0]}'.toUpperCase();
+    } else {
+      return name.isNotEmpty ? name[0].toUpperCase() : 'U';
+    }
+  }
+
+  Future<void> _handleAttendance(String type) async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Check network security before recording attendance
+      final networkResult = await NetworkSecurityService.checkNetworkSecurity();
+
+      if (!networkResult.isAllowed) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Network access denied: ${networkResult.reason}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/network-guard',
+            (Route<dynamic> route) => false,
+          );
+        }
+        return;
+      }
+
+      String employeeId = widget.employee['Employee ID']?.toString() ?? '';
+
+      Map<String, dynamic> result;
+      if (type.contains('Check In')) {
+        result = await AttendanceService.recordCheckInWithType(
+          employeeId,
+          type,
+        );
+      } else {
+        result = await AttendanceService.recordCheckOutWithType(
+          employeeId,
+          type,
+        );
+      }
+
+      bool success = result['success'] == true;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success ? '$type successful!' : '$type failed. Please try again.',
+            ),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _logout() async {
+    await LocalStorageService.clearUser();
+    if (mounted) {
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil('/login', (Route<dynamic> route) => false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text('Chol Smart Dashboard'),
-        backgroundColor: Theme.of(context).primaryColor,
-        foregroundColor: Colors.white,
-        automaticallyImplyLeading: false,
+        title: Row(
+          children: [
+            const Text(
+              'Chol Smart',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.blue[700],
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              _showLogoutDialog(context);
-            },
-            tooltip: 'Logout',
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _logout,
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Welcome Card
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: Theme.of(context).primaryColor,
-                      child: Text(
-                        _getInitials(employee['Name'] ?? 'User'),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Welcome back!',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(color: Colors.grey[600]),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            employee['Name'] ?? 'User',
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            employee['Position'] ?? 'Employee',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(color: Colors.grey[600]),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Employee Details
-            Text(
-              'Employee Information',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-
-            // Employee Info Cards
-            Expanded(
-              child: ListView(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
                 children: [
-                  _buildInfoCard(
-                    context,
-                    'Employee ID',
-                    employee['Employee ID']?.toString() ?? 'N/A',
-                    Icons.badge,
-                  ),
-                  _buildInfoCard(
-                    context,
-                    'Name',
-                    employee['Name']?.toString() ?? 'N/A',
-                    Icons.person,
-                  ),
-                  _buildInfoCard(
-                    context,
-                    'Position',
-                    employee['Position']?.toString() ?? 'N/A',
-                    Icons.work,
-                  ),
-
-                  // Quick Actions
+                  _buildProfileSection(),
                   const SizedBox(height: 24),
-                  Text(
-                    'Quick Actions',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  _buildAttendanceSection(),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildProfileSection() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue[600]!, Colors.blue[800]!],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.3),
+            spreadRadius: 2,
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 32,
+                  backgroundColor: Colors.white,
+                  child: Text(
+                    _getInitials(widget.employee['Name'] ?? 'User'),
+                    style: TextStyle(
+                      color: Colors.blue[700],
+                      fontSize: 24,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  Row(
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: _buildActionCard(
-                          context,
-                          'Check In',
-                          Icons.login,
-                          Colors.green,
-                          () {
-                            _showComingSoonDialog(context, 'Check In');
-                          },
+                      Text(
+                        widget.employee['Name'] ?? 'User',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildActionCard(
-                          context,
-                          'Check Out',
-                          Icons.logout,
-                          Colors.orange,
-                          () {
-                            _showComingSoonDialog(context, 'Check Out');
-                          },
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.employee['Position'] ?? 'Employee',
+                        style: TextStyle(color: Colors.blue[100], fontSize: 16),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'ID: ${widget.employee['Employee ID']}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttendanceSection() {
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.access_time, color: Colors.blue[700], size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  'Time & Attendance',
+                  style: TextStyle(
+                    color: Colors.blue[700],
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Track your daily work hours',
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            _buildShiftSection(
+              'Morning Shift',
+              'Start your day right',
+              Icons.wb_sunny,
+              Colors.orange[600]!,
+              [
+                _buildAttendanceButton(
+                  'Morning Check In',
+                  Icons.login,
+                  Colors.green[600]!,
+                  () => _handleAttendance('Morning Check In'),
+                ),
+                _buildAttendanceButton(
+                  'Morning Check Out',
+                  Icons.logout,
+                  Colors.orange[600]!,
+                  () => _handleAttendance('Morning Check Out'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            _buildShiftSection(
+              'Afternoon Shift',
+              'Continue your productivity',
+              Icons.wb_twilight,
+              Colors.blue[600]!,
+              [
+                _buildAttendanceButton(
+                  'Afternoon Check In',
+                  Icons.login,
+                  Colors.blue[600]!,
+                  () => _handleAttendance('Afternoon Check In'),
+                ),
+                _buildAttendanceButton(
+                  'Afternoon Check Out',
+                  Icons.logout,
+                  Colors.purple[600]!,
+                  () => _handleAttendance('Afternoon Check Out'),
+                ),
+              ],
             ),
           ],
         ),
@@ -158,116 +330,68 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoCard(
-    BuildContext context,
-    String label,
-    String value,
-    IconData icon,
-  ) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: ListTile(
-        leading: Icon(icon, color: Theme.of(context).primaryColor),
-        title: Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-        ),
-        subtitle: Text(
-          value,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionCard(
-    BuildContext context,
+  Widget _buildShiftSection(
     String title,
+    String subtitle,
     IconData icon,
     Color color,
-    VoidCallback onTap,
+    List<Widget> buttons,
   ) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            children: [
-              Icon(icon, size: 40, color: color),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[800],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+        const SizedBox(height: 4),
+        Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(flex: 1, child: buttons[0]),
+            const SizedBox(width: 12),
+            Expanded(flex: 1, child: buttons[1]),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAttendanceButton(
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onPressed,
+  ) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(
+        label,
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
       ),
-    );
-  }
-
-  String _getInitials(String name) {
-    List<String> names = name.split(' ');
-    String initials = '';
-
-    for (int i = 0; i < names.length && i < 2; i++) {
-      if (names[i].isNotEmpty) {
-        initials += names[i][0].toUpperCase();
-      }
-    }
-
-    return initials.isEmpty ? 'U' : initials;
-  }
-
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Logout'),
-          content: const Text('Are you sure you want to logout?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).pushReplacementNamed('/login');
-              },
-              child: const Text('Logout'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showComingSoonDialog(BuildContext context, String feature) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(feature),
-          content: Text('$feature feature is coming soon!'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        );
-      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        elevation: 4,
+        minimumSize: const Size(140, 50),
+      ),
     );
   }
 }

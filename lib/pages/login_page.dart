@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/google_sheets_service.dart';
+import '../services/local_storage_service.dart';
+import '../services/network_security_service.dart';
 import 'home_page.dart';
+import 'network_guard_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -33,12 +36,37 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      // First check network security before authenticating
+      final networkResult = await NetworkSecurityService.checkNetworkSecurity();
+
+      if (!networkResult.isAllowed) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Network access denied: ${networkResult.reason}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+
+          // Navigate to network guard page
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const NetworkGuardPage()),
+          );
+        }
+        return;
+      }
+
+      // Network is authorized, proceed with authentication
       final employee = await GoogleSheetsService.authenticateEmployee(
         _employeeIdController.text.trim(),
         _passwordController.text.trim(),
       );
 
       if (employee != null) {
+        // Save user data to local storage
+        await LocalStorageService.saveUser(employee);
+
         // Login successful
         if (mounted) {
           Navigator.of(context).pushReplacement(
@@ -97,10 +125,26 @@ class _LoginPageState extends State<LoginPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       // Logo or App Name
-                      Icon(
-                        Icons.business_center,
-                        size: 80,
-                        color: Theme.of(context).primaryColor,
+                      Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 8,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(15),
+                          child: Image.asset(
+                            'assets/icons/app_icon.png',
+                            fit: BoxFit.cover,
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 16),
                       Text(

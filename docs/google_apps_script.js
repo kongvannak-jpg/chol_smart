@@ -72,6 +72,6 @@ function createCORSResponse(data) {
     const output = ContentService
         .createTextOutput(JSON.stringify(data))
         .setMimeType(ContentService.MimeType.JSON);
-    
+
     return output;
 }

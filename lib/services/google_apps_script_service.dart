@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 class GoogleAppsScriptService {
   // Your deployed Google Apps Script Web App URL
   static const String _webAppUrl =
-      'https://script.google.com/macros/s/AKfycbyLfUH68dE0R1WF7Fy05r_iqbhJmiS4OZCtsoyJzWzU0uXgngGWuXSYK8tkwixzEMDfcw/exec';
+      'https://script.google.com/macros/s/AKfycbwlSW4D0iWbueORGVDbx5EWQVUVkthVwuLLcw1gKP85-30n4tKQPwWVxHkSQU_oFZZ71g/exec';
 
   static Future<List<Map<String, dynamic>>> getEmployeeData() async {
     try {

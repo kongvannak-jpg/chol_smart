@@ -2,11 +2,11 @@
 // Go to Extensions > Apps Script in your Google Sheet and replace ALL existing code with this
 
 function doGet(e) {
-    // Handle CORS preflight requests
-    if (e.parameter.callback) {
+    // Handle CORS preflight requests and JSONP callbacks
+    if (e && e.parameter && e.parameter.callback) {
         return handleJSONP(e);
     }
-    
+
     try {
         const sheet = SpreadsheetApp.getActiveSheet();
         const data = sheet.getDataRange().getValues();
@@ -39,6 +39,10 @@ function doGet(e) {
 
 function doPost(e) {
     try {
+        if (!e || !e.postData || !e.postData.contents) {
+            return createCORSResponse({ success: false, message: 'Invalid POST data' });
+        }
+
         const requestData = JSON.parse(e.postData.contents);
         const employeeId = requestData.employeeId;
         const password = requestData.password;
@@ -77,14 +81,18 @@ function createCORSResponse(data) {
     const output = ContentService
         .createTextOutput(JSON.stringify(data))
         .setMimeType(ContentService.MimeType.JSON);
-    
+
     return output;
 }
 
 // Handle JSONP requests for better browser compatibility
 function handleJSONP(e) {
+    if (!e || !e.parameter || !e.parameter.callback) {
+        return createCORSResponse({ success: false, message: 'Invalid JSONP request' });
+    }
+
     const callback = e.parameter.callback;
-    
+
     try {
         const sheet = SpreadsheetApp.getActiveSheet();
         const data = sheet.getDataRange().getValues();
