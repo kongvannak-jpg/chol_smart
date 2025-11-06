@@ -260,15 +260,6 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Test Connection Button (for development)
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pushNamed('/test');
-                        },
-                        child: const Text('🔧 Test Connection'),
-                      ),
-                      const SizedBox(height: 8),
-
                       // Help text
                       Text(
                         'Contact your administrator if you have login issues',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/attendance_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/network_security_service.dart';
+import '../services/attendance_status_service.dart';
 
 class HomePage extends StatefulWidget {
   final Map<String, dynamic> employee;
@@ -13,11 +14,55 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   bool _isLoading = false;
+  Map<String, bool> _attendanceStatus = {};
 
   @override
   void initState() {
     super.initState();
     _startNetworkMonitoring();
+    _loadAttendanceStatus();
+    _cleanupOldRecords();
+  }
+
+  Future<void> _loadAttendanceStatus() async {
+    try {
+      final employeeId = widget.employee['Employee ID']?.toString() ?? '';
+      final status = await AttendanceStatusService.getTodayAttendanceStatus(
+        employeeId,
+      );
+      setState(() {
+        _attendanceStatus = status;
+      });
+    } catch (e) {
+      print('Error loading attendance status: $e');
+    }
+  }
+
+  Future<void> _cleanupOldRecords() async {
+    try {
+      await AttendanceStatusService.cleanupOldRecords();
+    } catch (e) {
+      print('Error cleaning up old records: $e');
+    }
+  }
+
+  Future<void> _clearTodayAttendance() async {
+    try {
+      final employeeId = widget.employee['Employee ID']?.toString() ?? '';
+      await AttendanceStatusService.clearTodayAttendance(employeeId);
+      await _loadAttendanceStatus();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Today\'s attendance cleared for testing'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error clearing attendance: $e');
+    }
   }
 
   void _startNetworkMonitoring() {
@@ -92,6 +137,13 @@ class _HomePageState extends State<HomePage> {
 
       bool success = result['success'] == true;
 
+      if (success) {
+        // Mark attendance as completed
+        await AttendanceStatusService.markAttendanceCompleted(employeeId, type);
+        // Reload attendance status to update UI
+        await _loadAttendanceStatus();
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -149,8 +201,26 @@ class _HomePageState extends State<HomePage> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: _logout,
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: _loadAttendanceStatus,
+            tooltip: 'Refresh Status',
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            onSelected: (value) {
+              if (value == 'clear_today') {
+                _clearTodayAttendance();
+              } else if (value == 'logout') {
+                _logout();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'clear_today',
+                child: Text('Clear Today\'s Attendance (Debug)'),
+              ),
+              const PopupMenuItem(value: 'logout', child: Text('Logout')),
+            ],
           ),
         ],
       ),
@@ -254,6 +324,70 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildTodayStatusOverview() {
+    final completedCount = _attendanceStatus.values
+        .where((completed) => completed)
+        .length;
+    final totalCount = _attendanceStatus.length;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Today\'s Progress',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue[800],
+                ),
+              ),
+              Text(
+                '$completedCount / $totalCount',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue[800],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: totalCount > 0 ? completedCount / totalCount : 0,
+            backgroundColor: Colors.blue[100],
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[600]!),
+          ),
+          if (completedCount == totalCount && totalCount > 0) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green[600], size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  'All attendance completed for today!',
+                  style: TextStyle(
+                    color: Colors.green[600],
+                    fontWeight: FontWeight.w500,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildAttendanceSection() {
     return Card(
       elevation: 8,
@@ -263,6 +397,8 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _buildTodayStatusOverview(),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Icon(Icons.access_time, color: Colors.blue[700], size: 24),
@@ -372,26 +508,45 @@ class _HomePageState extends State<HomePage> {
     String label,
     IconData icon,
     Color color,
-    VoidCallback onPressed,
+    VoidCallback? onPressed,
   ) {
+    final isCompleted = _attendanceStatus[label] == true;
+    final canCheckOut = label.contains('Check Out')
+        ? _canCheckOut(label.contains('Morning') ? 'Morning' : 'Afternoon')
+        : true;
+
+    final isDisabled =
+        isCompleted || (!canCheckOut && label.contains('Check Out'));
+
     return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
+      onPressed: isDisabled ? null : onPressed,
+      icon: Icon(isCompleted ? Icons.check_circle : icon, size: 18),
       label: Text(
-        label,
+        isCompleted ? '✓ Completed' : label,
         textAlign: TextAlign.center,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
       ),
       style: ElevatedButton.styleFrom(
-        backgroundColor: color,
+        backgroundColor: isCompleted
+            ? Colors.grey[400]
+            : (isDisabled ? Colors.grey[300] : color),
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 4,
+        elevation: isDisabled ? 1 : 4,
         minimumSize: const Size(140, 50),
       ),
     );
+  }
+
+  bool _canCheckOut(String period) {
+    if (period == 'Morning') {
+      return _attendanceStatus['Morning Check In'] == true;
+    } else if (period == 'Afternoon') {
+      return _attendanceStatus['Afternoon Check In'] == true;
+    }
+    return false;
   }
 }

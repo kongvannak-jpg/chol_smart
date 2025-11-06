@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 class AttendanceService {
   // Your deployed Google Apps Script Web App URL
   static const String _webAppUrl =
-      'https://script.google.com/macros/s/AKfycbzUv3BQZrWD0IaBgVsbq0pKzQYK6_cqOVlZla2QovPPeQH28E7cB1h4lCRzM6TszdGhRQ/exec';
+      'https://script.google.com/macros/s/AKfycbxLC8R7Mx_yaNKlpO9RTn--zSDDTu058WQ3yg6sva1XCwJxf2Zw3z3Zj6Hd7bCLldWc/exec';
 
   static Future<Map<String, dynamic>> checkIn(
     String employeeId,

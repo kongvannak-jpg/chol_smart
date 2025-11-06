@@ -1,9 +1,10 @@
 import 'package:http/http.dart' as http;
+import 'dart:io';
 
 class GoogleSheetsService {
   static const String _baseUrl = 'https://docs.google.com/spreadsheets/d';
-  static const String _sheetId = '1W2FhTNAs1mx0Md01IkDnMK9LtYDN2m8r5u0A7ngKR1k';
-  static const String _gid = '0'; // gid for the sheet
+  static const String _sheetId = '1NFDdOPiwTuQGm-QUAbJk4akdhR-SciIj1hpGQ6yoqP0';
+  static const String _gid = '0';
 
   // This uses the CSV export endpoint which doesn't require authentication
   // Format: https://docs.google.com/spreadsheets/d/{sheetId}/export?format=csv&gid={gid}
@@ -12,15 +13,25 @@ class GoogleSheetsService {
 
   static Future<List<Map<String, dynamic>>> getEmployeeData() async {
     try {
-      final response = await http.get(Uri.parse(_csvUrl));
+      final response = await http.get(
+        Uri.parse(_csvUrl),
+        headers: {
+          'User-Agent': 'CholSmart/1.0 (Flutter Mobile App)',
+          'Accept': 'text/csv,application/csv,text/plain',
+          'Cache-Control': 'no-cache',
+        },
+      );
 
       if (response.statusCode == 200) {
         final csvData = response.body;
         return _parseCsvData(csvData);
       } else {
-        throw Exception('Failed to load employee data: ${response.statusCode}');
+        throw Exception(
+          'Failed to load employee data: ${response.statusCode} - ${response.body}',
+        );
       }
     } catch (e) {
+      print('GoogleSheetsService Error: $e');
       throw Exception('Error fetching employee data: $e');
     }
   }
